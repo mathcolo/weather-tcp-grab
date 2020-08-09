@@ -14,7 +14,7 @@
 #include <netinet/ip.h>
 #include <netinet/in.h>
 
-struct wxdata {
+typedef struct wx_data {
     uint8_t ack;
     uint8_t magic[3];
     int8_t barTrend;
@@ -58,13 +58,13 @@ struct wxdata {
     uint16_t timeSunset;
     uint8_t lineEndings[2];
     uint16_t crc;
-} __attribute__ ((packed));
+} __attribute__ ((packed)) wx_data_t;
 
-typedef enum {
-    revA, revB
-} packetversion_t;
+typedef enum wx_packetversion {
+    REV_A, REV_B
+} wx_packetversion_t;
 
-unsigned short crc_table [] = {
+static const uint16_t crc_table[] = {
     0x0,  0x1021,  0x2042,  0x3063,  0x4084,  0x50a5,  0x60c6,  0x70e7,
     0x8108,  0x9129,  0xa14a,  0xb16b,  0xc18c,  0xd1ad,  0xe1ce,  0xf1ef,
     0x1231,  0x210,  0x3273,  0x2252,  0x52b5,  0x4294,  0x72f7,  0x62d6,
@@ -99,93 +99,73 @@ unsigned short crc_table [] = {
     0x6e17,  0x7e36,  0x4e55,  0x5e74,  0x2e93,  0x3eb2,  0xed1,  0x1ef0
 };
 
-int main(int argc, const char** argv) {
-    
-	if(argc < 2)return EXIT_FAILURE;
-	
-    const char loopMessage[] = "LOOP 1\n";
-    
-	const int port  = 22222;
-	struct sockaddr_in serv_addr;
-	struct hostent *server;
-	int fd = socket(AF_INET, SOCK_STREAM, 0);
-    char buffer[150];
-    const int boolean_true = 1;
-    const char tos = IPTOS_LOWDELAY;
-    
-	if(fd < 0) {
-		printf("Error opening socket: %s\n", strerror(errno));
-		return EXIT_FAILURE;	
-	}
-	
-	server = gethostbyname(argv[1]);
-	if(server == NULL) {
-		printf("Error finding host %s: %s\n", argv[1], strerror(errno));
-		return EXIT_FAILURE;
-	}
-	
-	memset(&serv_addr,0x00,sizeof(struct sockaddr_in));
-	serv_addr.sin_family = AF_INET;
-    memcpy(&serv_addr.sin_addr.s_addr, server->h_addr_list[0], server->h_length);
-    serv_addr.sin_port = htons(port);
-    
-    setsockopt(fd,IPPROTO_IP,IPTOS_LOWDELAY,(char *)&boolean_true,sizeof(int));
-    setsockopt(fd,SOL_SOCKET,SO_REUSEADDR,(char *)&boolean_true,sizeof(int));
-	setsockopt(fd,IPPROTO_TCP,TCP_NODELAY,(char *)&boolean_true,sizeof(int));
-    
-    memset(&buffer,0x00,sizeof(buffer));
-    
-    if(connect(fd,(struct sockaddr *)&serv_addr,sizeof(struct sockaddr_in)) < 0) {
-        printf("Error connecting to %s: %s\n", argv[1], strerror(errno));
+static const char LOOP_MESSAGE[] = {'L', 'O', 'O', 'P', ' ', '1', '\n'};
+
+int main(int argc, char const *argv[]) {
+    if (argc < 2) {
         return EXIT_FAILURE;
     }
-    
-    if(send(fd,&loopMessage,sizeof(loopMessage), 0) < 0) {
+
+    const char *host = argv[1];
+    const int port = 22222;
+    struct sockaddr_in serv_addr;
+    struct hostent *server;
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+
+    if (fd < 0) {
+        printf("Error opening socket: %s\n", strerror(errno));
+        return EXIT_FAILURE;
+    }
+
+    server = gethostbyname(host);
+    if (server == NULL) {
+        printf("Error finding host %s: %s\n", host, strerror(errno));
+        return EXIT_FAILURE;
+    }
+
+    memset(&serv_addr, 0x00, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+    memcpy(&serv_addr.sin_addr.s_addr, server->h_addr_list[0], server->h_length);
+    serv_addr.sin_port = htons(port);
+
+    const int enabled = 1;
+    setsockopt(fd, IPPROTO_IP, IPTOS_LOWDELAY, (void *)&enabled, sizeof(enabled));
+    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (void *)&enabled, sizeof(enabled));
+    setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (void *)&enabled, sizeof(enabled));
+
+    if (connect(fd, (struct sockaddr *)&serv_addr, sizeof(serv_addr)) < 0) {
+        printf("Error connecting to %s: %s\n", host, strerror(errno));
+        close(fd);
+        return EXIT_FAILURE;
+    }
+
+    if (send(fd, LOOP_MESSAGE, sizeof(LOOP_MESSAGE), 0) < 0) {
         printf("Error sending request to console: %s\n", strerror(errno));
         close(fd);
         return EXIT_FAILURE;
     }
-    
-    size_t n = read(fd,&buffer,sizeof(buffer));
 
-    struct wxdata* data;
-    packetversion_t version;
-    
-    if(n != sizeof(struct wxdata)) {
-        printf("Data received from console is of invalid size. (Expected %lu, got %lu)\n", sizeof(struct wxdata), n);
+    size_t length;
+    wx_packetversion_t version;
+    wx_data_t data;
+
+    memset(&data, 0, sizeof(data));
+
+    if ((length = read(fd, (void *)&data, sizeof(data))) != sizeof(data)) {
+        printf("Data received from console is of invalid size. (Expected %lu, got %lu)\n", sizeof(data), length);
         close(fd);
         return EXIT_FAILURE;
     }
-    
-    data = (struct wxdata *)&buffer;
-    
-    //printf("%x\n%x\n", (uint32_t)&buffer,(uint32_t)data);
-    
-    if(data->ack != 0x06 || data->magic[0] != 'L' || data->magic[1] != 'O' || data->magic[2] != 'O') {
+
+    if (data.ack != 0x06
+        || data.magic[0] != 'L' || data.magic[1] != 'O' || data.magic[2] != 'O') {
         printf("The data received contained an invalid magic header.\n");
         close(fd);
         return EXIT_FAILURE;
     }
-    
-    if(data->barTrend == 'P')version = revA;
-    else version = revB;
-/*    
-    uint16_t crc = 0;
-	uint16_t *buffer_16 = buffer;
-    
-    for(size_t a = 1; a < sizeof(struct wxdata); a++) {
-        crc = crc_table[(crc >> 8) ^ buffer_16[a]] ^ (crc << 8);
-    }
-    
-    if(crc != 0x0000) {
-        printf("CRC mismatch found, got 0x%x\n", data->crc);
-        close(fd);
-        return EXIT_FAILURE;
-    }
-    
-  */  
-    printf("%.1f\n", data->outsideTemp/10.0f);
+
+    version = data.barTrend == 'P' ? REV_A : REV_B;
+    printf("%.1f\n", data.outsideTemp/10.0f);
     close(fd);
     return 0;
-    
 }
