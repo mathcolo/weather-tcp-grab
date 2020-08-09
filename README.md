@@ -16,9 +16,9 @@ This has been tested on Ubuntu 12.04.2 LTS x86 with gcc 4.6.3 installed.
     ./weather <ip>
 
 ## License
-	
+
 This utility is licensed under version 3 of the GNU LGPL License. For more information, see the "LICENSE" document in the respository or visit [the GNU site directly](http://www.gnu.org/licenses/lgpl.html).
 
 ## Acknowledgments
 
-Thanks, [Morgan Jones](https://github.com/integ3r), for effectively making this thing possible, and teaching me that I could cast raw bytes to a packed C struct. Awesome.
+Thanks, [Morgan Jones](https://github.com/numinit), for effectively making this thing possible, and teaching me that I could cast raw bytes to a packed C struct. Awesome.
